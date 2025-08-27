@@ -11,7 +11,7 @@ Script will do the following:
 1. It copies necessary dll files and configuration files
 2. adds parameter for KeyHolder=KeyHolderPlugin into firebird.conf
 3. restarts Firebird. *Important! Restart will disconnect all connected users!*
-4. copies empployee.fdb and then performs test encryption for it.
+4. copies employee.fdb and then performs test encryption for it.
 5. performs test gbak.exe with -KeyHolder to demonstrate test backup
 
 Please note - when KeyHolder.conf is renamed or removed from plugins, automatic server-level encryption/decryption is off, it means that you must supply key when accessing encrypted databases.
