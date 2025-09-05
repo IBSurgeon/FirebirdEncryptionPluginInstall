@@ -1,18 +1,18 @@
-= How to install and use IBSurgeon Firebird Encryption for Windows
+# How to install and use IBSurgeon Firebird Encryption for Windows
 
 In this instruction we will consider 2 phases: a) deployment and basic setup of plugin, which is a universal step required to distribute your applications with encrypted databases, and b) optional steps needed for developer of the application
 Please note that this script is for vanilla Firebird versions, since HQbird already includes necessary files.
 
 
-== Phase 1 (Mandatory):  Deployment and basic setup of IBSurgeon Encryption for Firebird on Windows
+## Phase 1 (Mandatory):  Deployment and basic setup of IBSurgeon Encryption for Firebird on Windows
 
-=== Download 1-step installer
+### Download 1-step installer
 
 Download 2 files from https://github.com/IBSurgeon/FirebirdEncryptionPluginInstall: 
 install-Firebird-encryption-plugin.bat and inst-crypt-plugin.ps1
 
 
-=== Run 1-step installer
+### Run 1-step installer
 
 Run install-Firebird-encryption-plugin.bat as administrator, it will start PowerShell script inst-crypt-plugin.ps1 which actually performs the installation. 
 
@@ -99,22 +99,22 @@ These files can be used for development of the application which will use encryp
 9) Important! Please note that script installs trial license file DbCrypt.conf: it is time-limited and in production must be replaced with the actual license file.
 
 
-== Phase 2 (optional): Developing encrypted database and applications for it
+## Phase 2 (optional): Developing encrypted database and applications for it
 
 At the end of the installer's work, we have the following situation: Firebird is configured for work with encryption, test encrypted database and encrypted backup were created, file with example keys KeyHolder.conf is renamed to simulate production mode.
 
 How can you encrypt your database?
 
 
-==== Try to encrypt your own database in command line
+### Try to encrypt your own database in command line
 
 Let's encrypt your database with the same steps as installer did.
 
-===== Rename _KeyHolder.conf back to KeyHolder.conf
+#### Rename _KeyHolder.conf back to KeyHolder.conf
 
 If you rename KeyHolder.conf to the original name, it will be possible to use keys from it for encrypt/decrypt operations.
 
-===== Encrypt your database in command-line
+#### Encrypt your database in command-line
 
 Open your database with isql.exe and run encryption command to encrypt your database with example key Red (which is listed in KeyHolder.conf). Make sure to use TCP connection string (with localhost or inet://), as in the example below:
 
@@ -152,7 +152,7 @@ SQL>
 Congratulations, now you have your database encrypted!
 
 
-===== Make encrypted backup of your encrypted database with gbak.exe
+#### Make encrypted backup of your encrypted database with gbak.exe
 
 Start cmd.exe and run the following command to create encrypted backup of encrypted database with gbak.exe:
 
@@ -161,12 +161,12 @@ Start cmd.exe and run the following command to create encrypted backup of encryp
 echo Key=Red 0xec,0xa1,0x52,0xf6,0x4d,0x27,0xda,0x93,0x53,0xe5,0x48,0x86,0xb9,0x7d,0xe2,0x8f,0x3b,0xfa,0xb7,0x91,0x22,0x5b,0x59,0x15,0x82,0x35,0xf5,0x30,0x1f,0x04,0xdc,0x75, | gbak.exe -user SYSDBA -password masterkey -KeyHolder KeyHolderStdin -Z -b localhost/3050:C:\Temp\mydatabase.fdb C:\Temp\myencrypted.fbk
 ```
 
-===== Development of application to access encrypted database
+### Development of application to access encrypted database
 
 Now you can start developing the application to access encrypted database.
 For this, you need to download example applications from https://ib-aid.com/download/crypt/v2024/ExampleApplications.zip, choose what language do you use and implement access accordingly.
 
-===== Where to get keys for your application?
+#### Where to get keys for your application?
 
 You can see in KeyHolder.conf there are examples of named keys - Red, Green, etc, which consist of 32 comma-separated hex values.
 
