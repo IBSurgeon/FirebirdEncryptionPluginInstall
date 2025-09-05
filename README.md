@@ -18,7 +18,9 @@ Run install-Firebird-encryption-plugin.bat as administrator, it will start Power
 
 What 1-step installer will do:
   
-1) Installer searches for installed Firebird in registry and offers to choose to what instance the plugin should be installed. It verifies if there is compatible version of Firebird (3.0.3, 4.0.x, 5.0.x). 
+####  Search for installed Firebird instances
+
+Installer searches for installed Firebird in registry and offers to choose to what instance the plugin should be installed. It verifies if there is compatible version of Firebird (3.0.3+, 4.0.x, 5.0.x). 
 
 ```
 D:\Firebird\FirebirdEncryptionPluginInstall-main\ForWindows>install-Firebird-encryption-plugin.bat
@@ -42,17 +44,30 @@ Version: 3.0.13.33818
 Enter number (0-1) and press Enter:
 ```
 
-2) Installer downloads necessary files (dlls and conf and trial license), then stores them to the selected Firebird folder.
+#### Automatically download files
 
-3) Installer changes firebird.conf - it adds line KeyHolderPlugin = KeyHolder
+Installer downloads necessary files (dlls, conf files, and trial license), then stores them to the selected Firebird folder.
 
-4) Installer restarts Firebird instance (be careful on production). At that step Firebird is ready to encrypt databases, using the trial license and sample keys in file KeyHolder.conf.
+#### Changes firebird.conf
 
-5) Installer checks the work of the encryption:
+Installer changes firebird.conf - it adds line *KeyHolderPlugin = KeyHolder*
+
+####  Restart Firebird (be careful on production!)
+
+Installer restarts Firebird instance . At that step Firebird is ready to encrypt databases, using the trial license and sample keys in file KeyHolder.conf.
+
+#### Check if installation works
+
+Installer checks the work of the encryption:
+
 
   a) It creates a copy of employee.fdb database from %Firebird_Root%\examples\empbuild\employee.fdb -> emp_crypted.fdb
+  
   b) It encrypts database emp_crypted.fdb using key from KeyHolder.conf
+  
   с) In case of successful encryption, it connects to the database with isql and runs command show database; to demonstrate that encryption is successful.
+  
+  
 
 ```
 Downloading plugin...
@@ -83,20 +98,28 @@ Skipping restore test for Firebird 3.0
 Copying client files...
 
 ```
-6) Installer renames file KeyHolder.conf with example keys to _KeyHolder.conf in order to prevent server-side access to them. It simulates the production mode, when there are no keys on the server side, only in applications.
+#### Renames KeyHolder.conf
 
-7) Installer checks the creation of encrypted backup with gbak.exe
+Installer renames file KeyHolder.conf with example keys to _KeyHolder.conf in order to prevent server-side access to them. It simulates the production mode, when there are no keys on the server side, only in applications.
+
+#### Checks if encrypted backup can be created
+
+Installer checks the creation of encrypted backup with gbak.exe
 
 Gbak creates backup file with key passed through KeyHolderStdin plugin (in versions Firebird 5.0 and 4.0) or with -Key options (in version Firebird 3.0). 
 As a result, file emp_crypted.fbk in the folder Firebird_Root\examples\empbuild\ will be created.
 
 
-8) Installer creates folder with client files  in the folder where it was started: Client\32bit and Client\64bit. 
+#### Creates folders with files for client applications
+
+Installer creates folder with client files  in the folder where it was started: Client\32bit and Client\64bit. 
 
 These files can be used for development of the application which will use encryption access: copy paste all files from that folder to the folder where your application's binary resides. It is very important to use the provided fbclient.dll.
 
 
-9) Important! Please note that script installs trial license file DbCrypt.conf: it is time-limited and in production must be replaced with the actual license file.
+#### Trial license is installed - don't forget to update it
+
+Important! Please note that script installs trial license file DbCrypt.conf: it is time-limited and in production must be replaced with the actual license file.
 
 
 ## Phase 2 (optional): Developing encrypted database and applications for it
