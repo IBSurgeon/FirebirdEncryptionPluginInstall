@@ -205,3 +205,9 @@ Key=MyKey1 0x35,0xa1,0xe2,0x86,0xb4,0xc6,0x4c,0xc4,0xdc,0xb5,0xd2,0x9e,0x72,0x6d
 Claro, você deve manter as chaves de produção em um local seguro e não perdê-las, já que chaves de criptografia perdidas não podem ser recuperadas.
 
 Para fins de teste você pode copiar e colar e modificar chaves do KeyHolder.conf.
+
+# Duvidas?
+
+Envia email para support@ib-aid.com
+
+
