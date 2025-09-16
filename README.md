@@ -217,6 +217,11 @@ Of course, you should keep the production keys in a secure location and do not l
 
 For test purposes you can copy-paste and modify keys from KeyHolder.conf.
 
+# Questions?
+
+Contact support@ib-aid.com
+
+
 
 
 
