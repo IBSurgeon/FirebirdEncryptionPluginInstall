@@ -17,7 +17,7 @@ $Global:pathFB = ""
 
 $searchKHText = "KeyHolderPlugin"
 $insKHText = "KeyHolderPlugin = KeyHolder	# inserted by installer script"
-$pathEmpDB = "examples\empbuild\employee.fdb"
+$pathEmpDB = "db-crypt\employee.fdb"
 # Collect services where Name or Path match criteria
 
 function FindFBServices {
@@ -214,12 +214,13 @@ function DownloadPluginByIndex {
 	$plugin_name = "CryptPlugin-FB_{0}_WINDOWS_{1}.zip" -f $short_ver, $arch
 	$url = $ftp_url + "/" + $plugin_name
 	$output = $tempDir + "\plugin.zip"
-	Write-Host "Downloading plugin..."
+	Write-Host "Downloading plugin... $url"
 	try {
 		# Invoke-WebRequest -Uri $url -OutFile $output
 		Invoke-WebRequest -Uri $url -OutFile $output -Method Get -ErrorAction Stop
 	}
 	catch {
+		Write-Error "Error downloading $plugin_name"
     		Write-Error "Query error: $($_.Exception.Message)"
     		ExitScript 1
     	}
@@ -260,50 +261,87 @@ function UpdateConfig {
 function EncryptEmpDB {
 	param ( $idx )
 
-	$dst_path = GetPathByIndex $idx
-	$emp_path = "$dst_path\$pathEmpDB"
-	if (Test-Path $emp_path) {
+#	$dst_path = GetPathByIndex $idx
+#	$emp_path = "$dst_path\$pathEmpDB"
+	if (Test-Path $empPath) {
 		# encrypt demo database if exists
-		Write-Host "Trying to encrypt employee database..."
 		$sqlCommands = @"
 alter database encrypt with dbcrypt key Green;
 show database;
 exit;
 "@
-		$gbak  = "$dst_path\gbak.exe"
-		$isql  = "$dst_path\isql.exe"
-		$fdb   = "$dst_path\examples\empbuild\emp_crypted.fdb"
-		$fbk   = "$dst_path\examples\empbuild\emp_crypted.fbk"
-		$fbr   = "$dst_path\examples\empbuild\emp_restored.fdb"
-		$khf   = "$dst_path\plugins\KeyHolder.conf" 
-		$khf_n = "$dst_path\plugins\_KeyHolder.conf"
+		if ([Environment]::Is64BitOperatingSystem) {
+			$arch = "64bit"
+		} else {
+			$arch = "32bit"
+		}
+		$gbak  = "$clientRoot\$arch\gbak.exe"
+		$isql  = "$clientRoot\$arch\isql.exe"
+		$gfix  = "$clientRoot\$arch\gfix.exe"
+		$nbkp  = "$clientRoot\$arch\nbackup.exe"
+		$fdb   = "$dbCryptDir\emp_crypted.fdb"
+		$fbk   = "$dbCryptDir\emp_crypted.fbk"
+		$fbr   = "$dbCryptDir\emp_restore.fdb"
+		$fbn   = "$dbCryptDir\emp_nbackup.fdb"
+		Write-Host $gbak		
+		Write-Host $fdb
 		$creds = "-user SYSDBA -password masterkey"
+		$green = "Key=Green 0xab,0xd7,0x34,0x63,0xae,0x19,0x52,0x00,0xb8,0x84,0xa3,0x44,0xbd,0x11,0x9f,0x72,0xe0,0x04,0x68,0x4f,0xc4,0x89,0x3b,0x20,0x8d,0x2a,0xa7,0x07,0x32,0x3b,0x5e,0x74,"
 
-		Copy-Item "$emp_path" "$fdb"
-		$sqlCommands | & $isql -q $fdb -user SYSDBA -password masterkey
+		Copy-Item "$empPath" "$fdb"
+		Write-Host "Initial encryption of employee database..." -ForegroundColor Yellow
+		Write-Host "Executing SQL> alter database encrypt with dbcrypt key Green;"
 
-		$v = GetVersionByIndex $idx
-                $key = Get-Content $khf | Where-Object { $_ -match "Green" } | Select-Object -First 1
-		if ($v -match "3.0") {
-			cmd /c "`"$gbak`" -b -KeyFile `"$khf`" -KeyName Green `"$fdb`" `"$fbk`" $creds"
-		} else {
-                        cmd /c "echo $key | `"$gbak`" -b -KeyHolder KeyHolderStdin `"$fdb`" `"$fbk`" $creds"
-		}
-		Write-Host "`r`nEmployee database encryption and backup completed."
-		Rename-Item -Path $khf -NewName $khf_n -Force
-		if (Test-Path $fbr) {
-			Remove-Item -Path $fbr		
-		}
-		if ($v -match "3.0") {
-			# cmd /c "`"$gbak`" -c -KeyFile `"$khf`" -KeyName Green `"$fbk`" `"$fbr`" $creds"
-			Write-Host "Skipping restore test for Firebird 3.0"
-		} else {
-                        cmd /c "echo $key | `"$gbak`" -c -KeyHolder KeyHolderStdin `"$fbk`" `"$fbr`" $creds"
-                        Write-Host "Restore test completed."
-		}
-	} else {
-		Write-Host "Employee database not found, skipping test encrypt procedure."
+		$tempSql = New-TemporaryFile
+		try {
+@"
+alter database encrypt with dbcrypt key Green;
+commit;
+show database;
+commit;
+exit;
+"@ | Set-Content -Path $tempSql.FullName
+			$sqltemp = $tempSql.FullName
+			Write-Host "Executing"
+			Write-Host "echo $green | `"$isql`" $creds -q -i `"$sqltemp`" localhost:`"$fdb`""
+			cmd /c "echo $green | `"$isql`" $creds -q -i `"$sqltemp`" localhost:`"$fdb`""
+			$exitCode = $LASTEXITCODE
+		} finally {
+			if (Test-Path $tempSql.FullName) { Remove-Item $tempSql.FullName -Force }
 	}
+	if ($exitCode -eq 0){
+			Write-Host "`n`rLet's make some tests"
+			$v = GetVersionByIndex $idx
+			if ($v -match "3.0") {
+				Write-Host "Skipping backup and restore test for Firebird 3.0" -ForegroundColor Yellow
+			} else {
+				Write-Host "Creating backup of encrypted database..." -ForegroundColor Yellow
+				Write-Host "Executing echo Key=Green ... | gbak -b localhost:`"$fdb`" `"$fbk`" -KeyHolder KeyHolderStdin"
+				cmd /c "echo $green | `"$gbak`" -b localhost:`"$fdb`" `"$fbk`" -KeyHolder KeyHolderStdin $creds"
+				$exitCode = $LASTEXITCODE
+				if ($exitCode -eq 0){
+					Write-Host "Encrypted backup: $fbk"
+	        			Write-Host "Starting test restore..." -ForegroundColor Yellow
+					Write-Host "Executing echo Key=Green=... | gbak -c -KeyHolder KeyHolderStdin `"$fbk`" localhost:`"$fbr`""
+					cmd /c "echo $green | `"$gbak`" -c -KeyHolder KeyHolderStdin `"$fbk`" localhost:`"$fbr`" $creds"
+					Write-Host "Encrypted restore: `"$fbr`""
+				} else {
+					Write-Host "Database backup failed." -ForegroundColor Red
+					Write-Host "Skipping restore test."
+				}
+			}
+			Write-Host "Starting nbackup test..." -ForegroundColor Yellow
+			Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`" -KeyHolder KeyHolderStdin
+			cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" -KeyHolder KeyHolderStdin $creds"
+			Write-Host "Encrypted nbackup: `"$fbn`""
+
+			Write-Host "Starting gfix test..." -ForegroundColor Yellow
+			Write-Host "Executing echo Key=Green=... | gfix -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`""
+			cmd /c "echo $green | `"$gfix`" -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`" $creds"
+		} else {
+			Write-Host "Database encryption failed." -ForegroundColor Red
+		}
+	} else { Write-Host "Employee database not found, skipping test encrypt procedure." }
 }
 
 function CreateTempDir {
@@ -313,10 +351,29 @@ function CreateTempDir {
 }
 
 function CopyClient {
-	Write-Host "Copying client files..."
-	Copy-Item -Path "$tempDir\plugin\Client" -Destination (Get-Location).Path -Recurse
-	Write-Host "Script prepared clents for x86 and x64 architecture in the current directory"
-	Write-Host "$((Get-Location).Path)\Client"
+	Write-Host "Copying client files..." -ForegroundColor Yellow
+	$p = (Get-Location).Path
+
+	$source = "$tempDir\plugin\Client"
+	$destination = (Get-Location).Path + "\CryptClient"
+
+	if (-not (Test-Path $destination)) {
+	    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+	    Write-Host "Created directory $destination"
+	}
+
+	try {
+		Copy-Item -Path "$source\*" -Destination $destination -Recurse -Force -ErrorAction Stop
+		Write-Host "Client files successfully copied to $destination" -ForegroundColor Green
+		$Global:dbCryptDir = "$destination\db-crypt"
+		$Global:empPath = "$Global:dbCryptDir\employee.fdb"
+		$Global:clientRoot = $destination
+		Write-Host "DB copied to $empPath"
+	}
+	catch {
+	    Write-Host "Error occured: $($_.Exception.Message)" -ForegroundColor Red
+	    exit 1
+	}
 }
 
 function ExitScript {
@@ -384,19 +441,23 @@ if ($args.Count -gt 0) {
 		} elseif ($services[$r-1].State -ne "Running") {
 			CreateTempDir
 			DownloadPluginByIndex $($r-1)
+			CopyClient
 			UpdateConfig $($r-1)
+			# Start FB service to encrypt DB
+			Write-Host "Starting `"$($services[$r-1].Name)`"..."
+			Start-Service -Name $($services[$r-1].Name) -ErrorAction Stop
 			EncryptEmpDB $($r-1)
 		} else {
 			Write-Host "Service `"$($services[$r-1].Name)`" is running, stopping..."
 			Stop-Service -Name $($services[$r-1].Name) -Force -ErrorAction Stop
 			CreateTempDir
 			DownloadPluginByIndex $($r-1)
+			CopyClient
 			UpdateConfig $($r-1)
 			Write-Host "Starting `"$($services[$r-1].Name)`"..."
 			Start-Service -Name $($services[$r-1].Name) -ErrorAction Stop
 			EncryptEmpDB $($r-1)
 		}
-	CopyClient
 #	end of special scenario
 #	} elseif ($services.Count -eq 1){
 #		CreateTempDir
