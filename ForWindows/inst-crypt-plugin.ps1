@@ -285,8 +285,9 @@ exit;
 		$fbn   = "$dbCryptDir\emp_nbackup.fdb"
 		Write-Host $gbak		
 		Write-Host $fdb
-		$creds = "-user SYSDBA -password masterkey"
-		$green = "Key=Green 0xab,0xd7,0x34,0x63,0xae,0x19,0x52,0x00,0xb8,0x84,0xa3,0x44,0xbd,0x11,0x9f,0x72,0xe0,0x04,0x68,0x4f,0xc4,0x89,0x3b,0x20,0x8d,0x2a,0xa7,0x07,0x32,0x3b,0x5e,0x74,"
+		$creds     = "-user SYSDBA -password masterkey"
+		$green_val = "0xab,0xd7,0x34,0x63,0xae,0x19,0x52,0x00,0xb8,0x84,0xa3,0x44,0xbd,0x11,0x9f,0x72,0xe0,0x04,0x68,0x4f,0xc4,0x89,0x3b,0x20,0x8d,0x2a,0xa7,0x07,0x32,0x3b,0x5e,0x74,"
+		$green     = "Key=Green $green_val"
 
 		Copy-Item "$empPath" "$fdb"
 		Write-Host "Initial encryption of employee database..." -ForegroundColor Yellow
@@ -313,7 +314,25 @@ exit;
 			Write-Host "`n`rLet's make some tests"
 			$v = GetVersionByIndex $idx
 			if ($v -match "3.0") {
-				Write-Host "Skipping backup and restore test for Firebird 3.0" -ForegroundColor Yellow
+				Write-Host "Backup employee database..." -ForegroundColor Yellow
+				Write-Host "Running `"$gbak`" -b -KEY ... -KeyName Green  -KeyName Green localhost:`"$fdb`" `"$fbk`" $creds"
+				cmd /c "`"$gbak`" -b -KEY $green_val -KeyName Green localhost:`"$fdb`" `"$fbk`" $creds"
+				Write-Host "Employee database backup completed."
+
+				Write-Host "Restore employee database..." -ForegroundColor Yellow
+				Write-Host "Running echo Key=Green=... | `"$gbak -c `"$fbk`" localhost:`"$fbr`" $creds"
+				cmd /c "echo $green | `"$gbak`" -c `"$fbk`" localhost:`"$fbr`" $creds"
+				Write-Host "Employee database restore completed."
+
+				Write-Host "Starting nbackup test..." -ForegroundColor Yellow
+				Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`"
+				cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" $creds"
+				Write-Host "Encrypted nbackup: `"$fbn`""
+
+				Write-Host "Starting gfix test..." -ForegroundColor Yellow
+				Write-Host "Executing echo Key=Green=... | gfix -v -full localhost:`"$fdb`""
+				cmd /c "echo $green | `"$gfix`" -v -full localhost:`"$fdb`" $creds"
+				Write-Host "Gfix test completed."
 			} else {
 				Write-Host "Creating backup of encrypted database..." -ForegroundColor Yellow
 				Write-Host "Executing echo Key=Green ... | gbak -b localhost:`"$fdb`" `"$fbk`" -KeyHolder KeyHolderStdin"
@@ -329,15 +348,26 @@ exit;
 					Write-Host "Database backup failed." -ForegroundColor Red
 					Write-Host "Skipping restore test."
 				}
-			}
-			Write-Host "Starting nbackup test..." -ForegroundColor Yellow
-			Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`" -KeyHolder KeyHolderStdin
-			cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" -KeyHolder KeyHolderStdin $creds"
-			Write-Host "Encrypted nbackup: `"$fbn`""
+				if ($v -match "4.0"){
+					Write-Host "Starting nbackup test..." -ForegroundColor Yellow
+					Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`" -KeyHolder KeyHolderStdin
+					cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" $creds"
+					Write-Host "Encrypted nbackup: `"$fbn`""
 
-			Write-Host "Starting gfix test..." -ForegroundColor Yellow
-			Write-Host "Executing echo Key=Green=... | gfix -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`""
-			cmd /c "echo $green | `"$gfix`" -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`" $creds"
+					Write-Host "Starting gfix test..." -ForegroundColor Yellow
+					Write-Host "Executing echo Key=Green=... | gfix -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`""
+					cmd /c "echo $green | `"$gfix`" -v -full localhost:`"$fdb`" $creds"
+				} else {
+					Write-Host "Starting nbackup test..." -ForegroundColor Yellow
+					Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`" -KeyHolder KeyHolderStdin
+					cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" -KeyHolder KeyHolderStdin $creds"
+					Write-Host "Encrypted nbackup: `"$fbn`""
+
+					Write-Host "Starting gfix test..." -ForegroundColor Yellow
+					Write-Host "Executing echo Key=Green=... | gfix -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`""
+					cmd /c "echo $green | `"$gfix`" -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`" $creds"
+				}
+			}
 		} else {
 			Write-Host "Database encryption failed." -ForegroundColor Red
 		}
