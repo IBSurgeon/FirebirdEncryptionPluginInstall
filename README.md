@@ -8,7 +8,7 @@ Please note that this script is for vanilla Firebird versions, since HQbird alre
 
 ### Download 1-step installer
 
-Download 2 files from https://github.com/IBSurgeon/FirebirdEncryptionPluginInstall: 
+Download 2 files from https://github.com/IBSurgeon/FirebirdEncryptionPluginInstall/tree/main/ForWindows: 
 install-Firebird-encryption-plugin.bat and inst-crypt-plugin.ps1
 
 
