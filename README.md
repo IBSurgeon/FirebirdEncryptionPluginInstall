@@ -1,5 +1,7 @@
 # How to install and use IBSurgeon Firebird Encryption for Windows
 
+[![CI](https://github.com/IBSurgeon/FirebirdEncryptionPluginInstall/actions/workflows/ci.yml/badge.svg)](https://github.com/IBSurgeon/FirebirdEncryptionPluginInstall/actions/workflows/ci.yml)
+
 In this instruction we will consider 2 phases: a) deployment and basic setup of plugin, which is a universal step required to distribute your applications with encrypted databases, and b) optional steps needed for developer of the application
 Please note that this script is for vanilla Firebird versions, since HQbird already includes necessary files.
 
