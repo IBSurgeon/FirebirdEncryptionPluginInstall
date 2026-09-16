@@ -1,0 +1,5 @@
+# Script files are Windows-only: disable EOL conversion so the repository
+# bytes are canonical and users downloading raw files from GitHub get CRLF.
+*.bat -text
+*.cmd -text
+*.ps1 -text
