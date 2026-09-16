@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-checks:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell syntax check
+        shell: pwsh
+        run: |
+          $path = 'ForWindows/inst-crypt-plugin.ps1'
+          # File is Windows-1252 encoded (no BOM) - read with explicit encoding
+          $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::GetEncoding(1252))
+          $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$errs) | Out-Null
+          if ($errs.Count) {
+            $errs | ForEach-Object { Write-Host "::error file=$path,line=$($_.Extent.StartLineNumber)::$($_.Message)" }
+            exit 1
+          }
+          Write-Host "OK: no syntax errors"
+
+      - name: Batch/PowerShell files keep CRLF endings
+        shell: pwsh
+        run: |
+          $bad = @()
+          Get-ChildItem -Recurse -Include *.bat,*.cmd,*.ps1 | ForEach-Object {
+            if ([System.IO.File]::ReadAllText($_.FullName) -match "(?<!`r)`n") { $bad += $_.FullName }
+          }
+          if ($bad) { $bad | ForEach-Object { Write-Host "::error file=$_::found LF-only line ending" }; exit 1 }
+
+  e2e-install:
+    name: E2E installer smoke test (Firebird 5.0)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    needs: static-checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Firebird server
+        shell: pwsh
+        run: choco install firebird -y --no-progress
+
+      - name: Run 1-step installer (interactive flow, auto-answer)
+        shell: pwsh
+        working-directory: ForWindows
+        run: |
+          # Two Read-Host prompts: greeting (Enter) + instance menu ("1");
+          # call the ps1 directly because the bat wrapper ends with an interactive `pause`.
+          '', '1' | powershell -ExecutionPolicy Bypass -File .\inst-crypt-plugin.ps1 *> install.log
+          Get-Content install.log | Out-Host
+          # The installer always exits 0, so grep the log for failure markers instead.
+          if (Select-String -Path install.log -Pattern 'encryption failed|backup failed|Error downloading|not found, exiting') {
+            throw "Installer log contains failure markers"
+          }
+
+      - name: Verify installation artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fb = (Get-ChildItem 'C:\Program Files\Firebird' -Directory |
+                 Sort-Object Name -Descending | Select-Object -First 1).FullName
+          if (-not (Test-Path "$fb\plugins\dbcrypt.dll")) { throw "dbcrypt.dll not installed to $fb\plugins" }
+          if (-not (Select-String -Path "$fb\firebird.conf" -Pattern 'KeyHolderPlugin\s*=\s*KeyHolder')) {
+            throw "KeyHolderPlugin not added to firebird.conf"
+          }
+          $cc = 'ForWindows\CryptClient\db-crypt'
+          foreach ($f in 'emp_crypted.fdb', 'emp_crypted.fbk', 'emp_restore.fdb') {
+            if (-not (Test-Path "$cc\$f")) { throw "Verification artifact $f missing - encrypt/backup test did not complete" }
+          }
+
+      - name: Upload installer log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log
+          path: ForWindows/install.log
+
+  release:
+    name: Package release zip
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [static-checks, e2e-install]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip installer files
+        run: zip -r "FirebirdEncryptionPluginInstall-${{ github.ref_name }}.zip" ForWindows
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: '*.zip'
