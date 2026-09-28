@@ -380,6 +380,47 @@ function CreateTempDir {
 	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 }
 
+function EnableStdinKeyHolder {
+	# Since 2026-09 the crypt plugin zip ships keyholderstdin.dll inactive in
+	# "key-plugins" and the client firebird.conf selects KeyHolder instead.
+	# The "echo Key=... | isql/gbak" flow requires KeyHolderStdin active in
+	# "plugins" and selected in the client firebird.conf.
+	Write-Host "Enabling KeyHolderStdin client plugin..." -ForegroundColor Yellow
+	foreach ($arch in @("64bit", "32bit")) {
+		$dir = "$clientRoot\$arch"
+		if (-not (Test-Path "$dir\isql.exe")) { continue }
+		$khdst = "$dir\plugins\keyholderstdin.dll"
+		if (-not (Test-Path $khdst)) {
+			$khsrc = "$dir\key-plugins\keyholderstdin.dll"
+			if (Test-Path $khsrc) {
+				New-Item -ItemType Directory -Path "$dir\plugins" -Force | Out-Null
+				Copy-Item -Path $khsrc -Destination $khdst -Force -ErrorAction Stop
+			} else {
+				Write-Host "Warning: $khsrc not found, cannot enable KeyHolderStdin." -ForegroundColor Yellow
+			}
+		}
+		if (-not (Test-Path $khdst)) { continue }
+		$khline = "KeyHolderPlugin = KeyHolderStdin"
+		$conf = "$dir\firebird.conf"
+		if (Test-Path $conf) {
+			$found = $false
+			$lines = @(Get-Content -Path $conf) | ForEach-Object {
+				if ($_ -match "^\s*#?\s*KeyHolderPlugin\s*=") {
+					$found = $true
+					$khline
+				} else {
+					$_
+				}
+			}
+			if (-not $found) { $lines += $khline }
+			Set-Content -Path $conf -Value $lines -Encoding Ascii
+		} else {
+			Set-Content -Path $conf -Value $khline -Encoding Ascii
+		}
+		Write-Host "KeyHolderStdin enabled in $dir" -ForegroundColor Green
+	}
+}
+
 function CopyClient {
 	Write-Host "Copying client files..." -ForegroundColor Yellow
 	$p = (Get-Location).Path
@@ -398,6 +439,7 @@ function CopyClient {
 		$Global:dbCryptDir = "$destination\db-crypt"
 		$Global:empPath = "$Global:dbCryptDir\employee.fdb"
 		$Global:clientRoot = $destination
+		EnableStdinKeyHolder
 		Write-Host "DB copied to $empPath"
 	}
 	catch {
