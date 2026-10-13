@@ -86,7 +86,10 @@ jobs:
             throw "KeyHolderPlugin not added to firebird.conf"
           }
           $cc = 'ForWindows\CryptClient\db-crypt'
-          foreach ($f in 'emp_crypted.fdb', 'emp_crypted.fbk', 'emp_restore.fdb', 'emp_nbackup.fdb') {
+          # Vendor run-tests.ps1 writes per-method artifacts: emp-ks-* (KeyHolder from
+          # DbCrypt.conf) and emp-khsi-* (KeyHolderStdin via stdin)
+          foreach ($f in 'emp-ks-crypted.fdb', 'emp-ks-crypted.fbk', 'emp-ks-restored.fdb', 'emp-ks-nbackup.fdb',
+                         'emp-khsi-crypted.fdb', 'emp-khsi-crypted.fbk', 'emp-khsi-restored.fdb', 'emp-khsi-nbackup.fdb') {
             if (-not (Test-Path "$cc\$f")) { throw "Verification artifact $f missing - encrypt/backup test did not complete" }
           }
 

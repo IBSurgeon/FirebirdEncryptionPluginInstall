@@ -263,6 +263,22 @@ function CreateTempDir {
 	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 }
 
+function AdjustRunTestsWait {
+	# Vendor run-tests.ps1 pauses inside isql with "shell timeout /t 5 /nobreak".
+	# timeout.exe cannot run with redirected stdin (CI jobs, scheduled runs), so the
+	# wait is skipped and encryption is tested before the crypt thread completes.
+	# Replace it with a ping-based sleep like the KeyHolderStdin section already uses.
+	# No-op if the vendor zip already ships a fixed script.
+	$rt = "$Global:clientRoot\db-crypt\run-tests.ps1"
+	if (-not (Test-Path $rt)) { return }
+	$text = [System.IO.File]::ReadAllText($rt)
+	$patched = $text -replace 'shell timeout /t \d+ /nobreak\s*;', 'shell ping 127.0.0.1 -n 6 > nul;'
+	if ($patched -ne $text) {
+		[System.IO.File]::WriteAllText($rt, $patched)
+		Write-Host "Adjusted encryption wait in run-tests.ps1 for non-interactive execution"
+	}
+}
+
 function CopyClient {
 	Write-Host "Copying client files..." -ForegroundColor Yellow
 	$p = (Get-Location).Path
@@ -427,6 +443,7 @@ if ($args.Count -gt 0) {
 				CreateTempDir
 				DownloadPluginByIndex $($r-1)
 				CopyClient
+				AdjustRunTestsWait
 				UpdateConfig $($r-1)
 			}
 			catch {
