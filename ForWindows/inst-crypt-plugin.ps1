@@ -1,4 +1,4 @@
-# Please contact IBSurgeon with any question regarding this script: support@ib-aid.com
+ï»¿# Please contact IBSurgeon with any question regarding this script: support@ib-aid.com
 # This script is provided AS IS, without any warranty. 
 # This script is licensed under IDPL https://firebirdsql.org/en/initial-developer-s-public-license-version-1-0/
 
@@ -57,7 +57,7 @@ function GetExeNameByIndex {
 			return $pathFBExe
 		} else {
 			Write-Host "File $pathFBExe not found, exiting."
-			ExitScript 0
+			exitScript 0
 		}
 	# Otherwise try to find firebird.exe from windows service info
 	} else {
@@ -95,8 +95,8 @@ function GetExeArchByIndex {
         	Write-Error "File not found: $FilePath"
 	        return $null
 	}
-	$stream = [System.IO.File]::OpenRead($FilePath)
 	try {
+		$stream = [System.IO.File]::OpenRead($FilePath)
         	$reader = New-Object System.IO.BinaryReader($stream)
 	        $signature = $reader.ReadUInt16()
 	        if ($signature -ne 0x5A4D) {  # 'MZ'
@@ -112,7 +112,7 @@ function GetExeArchByIndex {
 	            Write-Error "PE signature not found"
 	            return $null
         	}
-        # read machine (2 áàéòà ïîñëå "PE")
+        # read machine (2 Ð±Ð°Ð¹Ñ‚Ð° Ð¿Ð¾ÑÐ»Ðµ "PE")
         $machine = $reader.ReadUInt16()
         # determine architecture
         $architecture = switch ($machine) {
@@ -145,7 +145,7 @@ function GetVersionByIndex{
 		$version = $file.VersionInfo.ProductVersion
 	        return $version
 	} else {
-		return -1
+		exitScript 1
 	}
 }
 
@@ -171,13 +171,15 @@ function ShowMenu {
 		$path = GetPathByIndex $index
 	      	Write-Host "Installed in: $path"
 		$version = GetVersionByIndex $index
-	        Write-Host "Version: $version"
+		$arch = GetExeArchByIndex $index
+	        Write-Host "Version: $version ($arch)"
 		Write-Host " -------------------------------------"
 	}
 	Write-Host "0) Exit script"
 	do {
 		$choice = Read-Host "Enter number (0-$cnt) and press Enter"
-	} until ($choice -match "^[0-$cnt]$")
+#	} until ($choice -match "^[0-$cnt]$")
+	} until ($choice -match '^\d+$' -and [int]$choice -le $cnt)
 	return $choice
 } # ShowMenu
 
@@ -220,11 +222,8 @@ function DownloadPluginByIndex {
 		Invoke-WebRequest -Uri $url -OutFile $output -Method Get -ErrorAction Stop
 	}
 	catch {
-		Write-Error "Error downloading $plugin_name"
-    		Write-Error "Query error: $($_.Exception.Message)"
-    		ExitScript 1
+		throw "Error downloading $plugin_name : $($_.Exception.Message)"
     	}
-
 	
 	$src_dir = $tempDir + "\plugin"
 	New-Item -ItemType Directory -Path $src_dir -Force | Out-Null
@@ -250,175 +249,18 @@ function UpdateConfig {
 	# Search firebird.conf for KeyHolder plugin
 	$pattern = "^[^\#]*$searchKHText"
 	if (Select-String -Path $fbConfPath -Pattern $pattern) {
-		Write-Host "Directive `"$searchKHText`" already presents in firebird.conf. Please, check it out."
+		Write-Host "Parameter `"$searchKHText`" already presents in firebird.conf. Please, check it out."
 	} else {
-		
+		copyFileWithDate -Path $fbConfPath
 		Write-Host "Adding $searchKHText to firebird.conf"
 		Add-Content -Path $fbConfPath -Value $insKHText
 	}
-}
-
-function EncryptEmpDB {
-	param ( $idx )
-
-#	$dst_path = GetPathByIndex $idx
-#	$emp_path = "$dst_path\$pathEmpDB"
-	if (Test-Path $empPath) {
-		# encrypt demo database if exists
-		$sqlCommands = @"
-alter database encrypt with dbcrypt key Green;
-show database;
-exit;
-"@
-		if ([Environment]::Is64BitOperatingSystem) {
-			$arch = "64bit"
-		} else {
-			$arch = "32bit"
-		}
-		$gbak  = "$clientRoot\$arch\gbak.exe"
-		$isql  = "$clientRoot\$arch\isql.exe"
-		$gfix  = "$clientRoot\$arch\gfix.exe"
-		$nbkp  = "$clientRoot\$arch\nbackup.exe"
-		$fdb   = "$dbCryptDir\emp_crypted.fdb"
-		$fbk   = "$dbCryptDir\emp_crypted.fbk"
-		$fbr   = "$dbCryptDir\emp_restore.fdb"
-		$fbn   = "$dbCryptDir\emp_nbackup.fdb"
-		Write-Host $gbak		
-		Write-Host $fdb
-		$creds     = "-user SYSDBA -password masterkey"
-		$green_val = "0xab,0xd7,0x34,0x63,0xae,0x19,0x52,0x00,0xb8,0x84,0xa3,0x44,0xbd,0x11,0x9f,0x72,0xe0,0x04,0x68,0x4f,0xc4,0x89,0x3b,0x20,0x8d,0x2a,0xa7,0x07,0x32,0x3b,0x5e,0x74,"
-		$green     = "Key=Green $green_val"
-
-		Copy-Item "$empPath" "$fdb"
-		Write-Host "Initial encryption of employee database..." -ForegroundColor Yellow
-		Write-Host "Executing SQL> alter database encrypt with dbcrypt key Green;"
-
-		$tempSql = New-TemporaryFile
-		try {
-@"
-alter database encrypt with dbcrypt key Green;
-commit;
-show database;
-commit;
-exit;
-"@ | Set-Content -Path $tempSql.FullName
-			$sqltemp = $tempSql.FullName
-			Write-Host "Executing"
-			Write-Host "echo $green | `"$isql`" $creds -q -i `"$sqltemp`" localhost:`"$fdb`""
-			cmd /c "echo $green | `"$isql`" $creds -q -i `"$sqltemp`" localhost:`"$fdb`""
-			$exitCode = $LASTEXITCODE
-		} finally {
-			if (Test-Path $tempSql.FullName) { Remove-Item $tempSql.FullName -Force }
-	}
-	if ($exitCode -eq 0){
-			Write-Host "`n`rLet's make some tests"
-			$v = GetVersionByIndex $idx
-			if ($v -match "3.0") {
-				Write-Host "Backup employee database..." -ForegroundColor Yellow
-				Write-Host "Running `"$gbak`" -b -KEY ... -KeyName Green  -KeyName Green localhost:`"$fdb`" `"$fbk`" $creds"
-				cmd /c "`"$gbak`" -b -KEY $green_val -KeyName Green localhost:`"$fdb`" `"$fbk`" $creds"
-				Write-Host "Employee database backup completed."
-
-				Write-Host "Restore employee database..." -ForegroundColor Yellow
-				Write-Host "Running echo Key=Green=... | `"$gbak -c `"$fbk`" localhost:`"$fbr`" $creds"
-				cmd /c "echo $green | `"$gbak`" -c `"$fbk`" localhost:`"$fbr`" $creds"
-				Write-Host "Employee database restore completed."
-
-				Write-Host "Starting nbackup test..." -ForegroundColor Yellow
-				Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`"
-				cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" $creds"
-				Write-Host "Encrypted nbackup: `"$fbn`""
-
-				Write-Host "Starting gfix test..." -ForegroundColor Yellow
-				Write-Host "Executing echo Key=Green=... | gfix -v -full localhost:`"$fdb`""
-				cmd /c "echo $green | `"$gfix`" -v -full localhost:`"$fdb`" $creds"
-				Write-Host "Gfix test completed."
-			} else {
-				Write-Host "Creating backup of encrypted database..." -ForegroundColor Yellow
-				Write-Host "Executing echo Key=Green ... | gbak -b localhost:`"$fdb`" `"$fbk`" -KeyHolder KeyHolderStdin"
-				cmd /c "echo $green | `"$gbak`" -b localhost:`"$fdb`" `"$fbk`" -KeyHolder KeyHolderStdin $creds"
-				$exitCode = $LASTEXITCODE
-				if ($exitCode -eq 0){
-					Write-Host "Encrypted backup: $fbk"
-	        			Write-Host "Starting test restore..." -ForegroundColor Yellow
-					Write-Host "Executing echo Key=Green=... | gbak -c -KeyHolder KeyHolderStdin `"$fbk`" localhost:`"$fbr`""
-					cmd /c "echo $green | `"$gbak`" -c -KeyHolder KeyHolderStdin `"$fbk`" localhost:`"$fbr`" $creds"
-					Write-Host "Encrypted restore: `"$fbr`""
-				} else {
-					Write-Host "Database backup failed." -ForegroundColor Red
-					Write-Host "Skipping restore test."
-				}
-				if ($v -match "4.0"){
-					Write-Host "Starting nbackup test..." -ForegroundColor Yellow
-					Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`" -KeyHolder KeyHolderStdin
-					cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" $creds"
-					Write-Host "Encrypted nbackup: `"$fbn`""
-
-					Write-Host "Starting gfix test..." -ForegroundColor Yellow
-					Write-Host "Executing echo Key=Green=... | gfix -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`""
-					cmd /c "echo $green | `"$gfix`" -v -full localhost:`"$fdb`" $creds"
-				} else {
-					Write-Host "Starting nbackup test..." -ForegroundColor Yellow
-					Write-Host "Executing echo Key=Green=... | nbackup -b 0 localhost:`"$fdb`"" `"$fbn`" -KeyHolder KeyHolderStdin
-					cmd /c "echo $green | `"$nbkp`" -b 0 localhost:`"$fdb`" `"$fbn`" -KeyHolder KeyHolderStdin $creds"
-					Write-Host "Encrypted nbackup: `"$fbn`""
-
-					Write-Host "Starting gfix test..." -ForegroundColor Yellow
-					Write-Host "Executing echo Key=Green=... | gfix -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`""
-					cmd /c "echo $green | `"$gfix`" -v -full -KeyHolder KeyHolderStdin localhost:`"$fdb`" $creds"
-				}
-			}
-		} else {
-			Write-Host "Database encryption failed." -ForegroundColor Red
-		}
-	} else { Write-Host "Employee database not found, skipping test encrypt procedure." }
 }
 
 function CreateTempDir {
 	# Make temp directory
 	$Global:tempDir = "$env:TEMP\temp-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss'))"
 	New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-}
-
-function EnableStdinKeyHolder {
-	# Since 2026-09 the crypt plugin zip ships keyholderstdin.dll inactive in
-	# "key-plugins" and the client firebird.conf selects KeyHolder instead.
-	# The "echo Key=... | isql/gbak" flow requires KeyHolderStdin active in
-	# "plugins" and selected in the client firebird.conf.
-	Write-Host "Enabling KeyHolderStdin client plugin..." -ForegroundColor Yellow
-	foreach ($arch in @("64bit", "32bit")) {
-		$dir = "$clientRoot\$arch"
-		if (-not (Test-Path "$dir\isql.exe")) { continue }
-		$khdst = "$dir\plugins\keyholderstdin.dll"
-		if (-not (Test-Path $khdst)) {
-			$khsrc = "$dir\key-plugins\keyholderstdin.dll"
-			if (Test-Path $khsrc) {
-				New-Item -ItemType Directory -Path "$dir\plugins" -Force | Out-Null
-				Copy-Item -Path $khsrc -Destination $khdst -Force -ErrorAction Stop
-			} else {
-				Write-Host "Warning: $khsrc not found, cannot enable KeyHolderStdin." -ForegroundColor Yellow
-			}
-		}
-		if (-not (Test-Path $khdst)) { continue }
-		$khline = "KeyHolderPlugin = KeyHolderStdin"
-		$conf = "$dir\firebird.conf"
-		if (Test-Path $conf) {
-			$found = $false
-			$lines = @(Get-Content -Path $conf) | ForEach-Object {
-				if ($_ -match "^\s*#?\s*KeyHolderPlugin\s*=") {
-					$found = $true
-					$khline
-				} else {
-					$_
-				}
-			}
-			if (-not $found) { $lines += $khline }
-			Set-Content -Path $conf -Value $lines -Encoding Ascii
-		} else {
-			Set-Content -Path $conf -Value $khline -Encoding Ascii
-		}
-		Write-Host "KeyHolderStdin enabled in $dir" -ForegroundColor Green
-	}
 }
 
 function CopyClient {
@@ -439,16 +281,13 @@ function CopyClient {
 		$Global:dbCryptDir = "$destination\db-crypt"
 		$Global:empPath = "$Global:dbCryptDir\employee.fdb"
 		$Global:clientRoot = $destination
-		EnableStdinKeyHolder
 		Write-Host "DB copied to $empPath"
-	}
-	catch {
-	    Write-Host "Error occured: $($_.Exception.Message)" -ForegroundColor Red
-	    exit 1
+	} catch {
+		throw "Failed to copy client files: $($_.Exception.Message)"
 	}
 }
 
-function ExitScript {
+function exitScript {
 	param ( $code )
 	# Remove temp directory on exit
 	if ($tempDir) {
@@ -467,16 +306,84 @@ function TestMSVCRTPresence {
 			Write-Host "Script cannot find any MSVCRT installed, exiting..."
 			Write-Host "Please, install appropriate version of Microsoft Visual C++ Redistributable:"
 			Write-Host "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170"
-			ExitScript 1
+			exitScript 1
 		}
 		Write-Host "MSVCRT instances found: $count"
 	} catch {
 		Write-Host "Error retrieving MSVCRT list, exiting..."
-		ExitScript 1
+		exitScript 1
 	}
 }
 
+function testAdmin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function copyFileWithDate {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Destination,
+
+        [Parameter(Mandatory = $false)]
+        [datetime]$Date = (Get-Date)
+    )
+
+    # check if file really exist
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Write-Error "File not found: $Path"
+        return
+    }
+
+    # if destination folder is not set, then copy to same folder
+    if (-not $Destination) {
+        $Destination = Split-Path -Parent $Path
+    }
+
+    # does file folder exist?
+    if (-not (Test-Path -LiteralPath $Destination -PathType Container)) {
+        Write-Error "Destination folder not found: $Destination"
+        return
+    }
+
+    # parse file name
+    $item      = Get-Item -LiteralPath $Path
+    $baseName  = $item.BaseName      # name without extension
+    $extension = $item.Extension     # extension with dot (may be empty)
+
+    # create suffix with date stamp
+    $dateSuffix = $Date.ToString("yyyy-MM-dd_HHmmss")
+
+    # create new file name: filename.ext.yyyy-MM-dd_HHmmss
+    if ($extension) {
+        $newName = "$baseName$extension.$dateSuffix"
+    } else {
+        $newName = "$baseName.$dateSuffix"
+    }
+    $newPath = Join-Path -Path $Destination -ChildPath $newName
+    # do copy
+    try {
+        Copy-Item -LiteralPath $Path -Destination $newPath -ErrorAction Stop
+        Write-Host "$Path -> $newPath copied"
+        return $newPath
+    }
+    catch {
+        Write-Error "Error copying: $($_.Exception.Message)"
+    }
+}
+
+
 # Main script section
+
+if (-not (testAdmin)) {
+	Write-Host "This script must be run with administrative privileges."
+	exitScript 1
+}
 
 if ($args.Count -gt 0) {
 	foreach ($arg in $args) {
@@ -489,8 +396,7 @@ if ($args.Count -gt 0) {
 			CreateTempDir
 			DownloadPluginByIndex -1
 			UpdateConfig -1
-			EncryptEmpDB -1
-			ExitScript 0
+			exitScript 0
 	        } else {
 	        	Write-Host "Unknown parameter received ($key)"
 	        }
@@ -509,26 +415,41 @@ if ($args.Count -gt 0) {
 	if ($services.Count -gt 0) {
 		$r = ShowMenu
 		if ($r -eq 0) {
-			ExitScript 0
-		} elseif ($services[$r-1].State -ne "Running") {
-			CreateTempDir
-			DownloadPluginByIndex $($r-1)
-			CopyClient
-			UpdateConfig $($r-1)
-			# Start FB service to encrypt DB
-			Write-Host "Starting `"$($services[$r-1].Name)`"..."
-			Start-Service -Name $($services[$r-1].Name) -ErrorAction Stop
-			EncryptEmpDB $($r-1)
+			exitScript 0
 		} else {
-			Write-Host "Service `"$($services[$r-1].Name)`" is running, stopping..."
-			Stop-Service -Name $($services[$r-1].Name) -Force -ErrorAction Stop
-			CreateTempDir
-			DownloadPluginByIndex $($r-1)
-			CopyClient
-			UpdateConfig $($r-1)
-			Write-Host "Starting `"$($services[$r-1].Name)`"..."
-			Start-Service -Name $($services[$r-1].Name) -ErrorAction Stop
-			EncryptEmpDB $($r-1)
+			if ($services[$r-1].State -eq "Running") {
+				# Firebird service is running, let's try to stop it
+				Write-Host "Service `"$($services[$r-1].Name)`" is running, stopping..."
+				Stop-Service -Name $($services[$r-1].Name) -Force -ErrorAction Stop
+			}
+			$errorOccured = 0
+			try {
+				CreateTempDir
+				DownloadPluginByIndex $($r-1)
+				CopyClient
+				UpdateConfig $($r-1)
+			}
+			catch {
+				Write-Host "Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+				$errorOccured = 1
+				
+			}
+			finally {
+				# Start Firebird service in any case
+				Write-Host "Starting `"$($services[$r-1].Name)`"..."
+				Start-Service -Name $($services[$r-1].Name) -ErrorAction Stop
+			}
+			if ($errorOccured -eq 1) {
+				Write-Host "Skipping tests because installation failed." -ForegroundColor Yellow
+				exitScript 1
+			}
+			Write-Host "Running tests: $Global:clientRoot\db-crypt\run-tests.ps1"
+			& "$Global:clientRoot\db-crypt\run-tests.ps1"
+			if ($LASTEXITCODE -ne 0) {
+				Write-Host "Tests failed (exit code $LASTEXITCODE)" -ForegroundColor Red
+				exitScript 1
+			}
+			exitScript 0
 		}
 #	end of special scenario
 #	} elseif ($services.Count -eq 1){
@@ -536,10 +457,10 @@ if ($args.Count -gt 0) {
 #		DownloadPluginByIndex 0
 	} else {
 	    Write-Host "Firebird instances available for plugin installation were not found" -ForegroundColor Yellow
-	    Write-Host "If you have Firebird installatiion and still want to install crypt plugin"
+	    Write-Host "If you have Firebird installation and still want to install crypt plugin"
 	    Write-Host "run script again adding parameter --crypt=c:\path\to\firebird\installation"
 	    Write-Host "e.g. inst-crypt-plugin.ps1 --crypt='c:\program Files\Firebird\Firebird_3_0'"
 	    Write-Host "Warning: You must stop Firebird service before this and start it again after install"
 	}
-	ExitScript 0
+	exitScript 0
 }
